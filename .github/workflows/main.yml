@@ -1,0 +1,114 @@
+# 这个 Action 的名字，会显示在 "Actions" 标签页
+name: Sync Upstream Releases
+
+on:
+  # 1. 允许你从 Actions 标签页手动触发这个工作流
+  workflow_dispatch:
+  
+  # 2. 设定一个定时器 (使用 UTC 时间)
+  # 这里的 '0 8 * * *' 表示每天的 UTC 时间 8:00 运行一次
+  # 你可以根据需要修改，或者删除这两行来取消自动运行
+  schedule:
+    - cron: '0 8 * * *'
+
+jobs:
+  sync-releases:
+    # 使用最新的 Ubuntu 系统作为运行环境
+    runs-on: ubuntu-latest
+    
+    # 必须设置权限，允许 Action 写入你仓库的 Releases
+    permissions:
+      contents: read
+      releases: write
+      
+    steps:
+      # 这是一个标准步骤，几乎所有 Action 都会用
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 核心步骤：运行一个脚本来同步 Release
+      - name: Sync Releases from Upstream
+        env:
+          # GITHUB_TOKEN 是 GitHub 自动生成的，用来授权 Action 操作你的仓库
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          # -----------------------------------------------------
+          # !! 唯一需要你修改的地方 !!
+          # 把 'original_user/original_repo' 替换成你要同步的【原始仓库】
+          #
+          # 示例: 
+          # UPSTREAM_REPO: "torvalds/linux"
+          # UPSTREAM_REPO: "microsoft/vscode"
+          # UPSTREAM_REPO: "coolsnowwolf/lede"
+          # -----------------------------------------------------
+          UPSTREAM_REPO: "https://github.com/supzza/clianpro"
+          
+          # 这会自动获取你【当前】仓库的名称 (例如: your_name/your_fork)
+          MY_REPO: ${{ github.repository }}
+        
+        run: |
+          echo "开始同步 Releases..."
+          echo "上游 (源) 仓库: $UPSTREAM_REPO"
+          echo "下游 (目标) 仓库: $MY_REPO"
+          
+          # 创建一个临时目录来下载附件
+          mkdir -p ./release_assets
+          
+          # 1. 获取上游和当前仓库的 Release 标签列表
+          # 存为文件，方便后续比较
+          gh release list --repo $UPSTREAM_REPO --json tagName -q ".[].tagName" > upstream_tags.txt
+          gh release list --repo $MY_REPO --json tagName -q ".[].tagName" > my_tags.txt
+
+          # 2. 找出上游有，但我没有的标签
+          # 使用 grep 命令来找出差集
+          # -F (固定字符串), -x (整行匹配), -v (反向), -f (从文件读取模式)
+          MISSING_TAGS=$(grep -Fxvf my_tags.txt upstream_tags.txt)
+
+          if [ -z "$MISSING_TAGS" ]; then
+            echo "🎉 你的仓库 ($MY_REPO) 已经与上游 ($UPSTREAM_REPO) 的 Releases 保持同步。"
+            exit 0
+          fi
+
+          echo "发现以下缺失的 Releases: $MISSING_TAGS"
+          echo "--- 开始同步 ---"
+
+          # 3. 循环处理每一个缺失的标签
+          for TAG in $MISSING_TAGS
+          do
+            echo "[SYNC] 正在处理 $TAG..."
+            
+            # 3.1 从上游下载该 Tag 的所有附件到 release_assets 目录
+            echo "  > 正在下载附件..."
+            # -p "*" 表示下载所有附件, -D 指定下载目录
+            gh release download $TAG --repo $UPSTREAM_REPO -p "*" -D ./release_assets/
+            
+            # 3.2 获取原 Release 的标题和笔记
+            echo "  > 正在获取元数据 (标题和描述)..."
+            TITLE=$(gh release view $TAG --repo $UPSTREAM_REPO --json name -q ".name")
+            NOTES=$(gh release view $TAG --repo $UPSTREAM_REPO --json body -q ".body")
+            IS_PRERELEASE=$(gh release view $TAG --repo $UPSTREAM_REPO --json isPrerelease -q ".isPrerelease")
+            
+            # 准备创建命令
+            CREATE_CMD="gh release create $TAG ./release_assets/* \
+                        --repo $MY_REPO \
+                        --title \"$TITLE\" \
+                        --notes-file <(echo \"$NOTES\")" # 使用 --notes-file 完美处理多行和特殊字符
+            
+            if [ "$IS_PRERELEASE" = "true" ]; then
+              CREATE_CMD="$CREATE_CMD --prerelease"
+              echo "  > 标记为 '预发布' (Prerelease)"
+            fi
+
+            # 3.3 在你的仓库上创建 Release 并上传所有附件
+            echo "  > 正在创建 Release 并上传附件..."
+            eval $CREATE_CMD
+                
+            # 3.4 清理 release_assets 目录，为下一个循环做准备
+            echo "  > 正在清理临时文件..."
+            rm ./release_assets/*
+            
+            echo "[SYNC] $TAG 同步完毕。"
+            echo "--------------------"
+          done
+
+          echo "--- 所有缺失的 Releases 同步完成 ---"
