@@ -18,8 +18,7 @@ jobs:
     
     # 必须设置权限，允许 Action 写入你仓库的 Releases
     permissions:
-      contents: read
-      releases: write
+      contents: write
       
     steps:
       # 这是一个标准步骤，几乎所有 Action 都会用
