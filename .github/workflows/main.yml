@@ -46,6 +46,9 @@ jobs:
           MY_REPO: ${{ github.repository }}
         
         run: |
+          set -e  # 确保出错时立即停止
+          set -x  # 打印所有执行的命令，帮我们找到错误行
+  
           echo "开始同步 Releases..."
           echo "上游 (源) 仓库: $UPSTREAM_REPO"
           echo "下游 (目标) 仓库: $MY_REPO"
