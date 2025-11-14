@@ -40,7 +40,7 @@ jobs:
           # UPSTREAM_REPO: "microsoft/vscode"
           # UPSTREAM_REPO: "coolsnowwolf/lede"
           # -----------------------------------------------------
-          UPSTREAM_REPO: "https://github.com/supzza/clianpro"
+          UPSTREAM_REPO: "supzza/clianpro"
           
           # 这会自动获取你【当前】仓库的名称 (例如: your_name/your_fork)
           MY_REPO: ${{ github.repository }}
