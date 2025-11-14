@@ -46,8 +46,10 @@ jobs:
           MY_REPO: ${{ github.repository }}
         
         run: |
-          set -e  # 确保出错时立即停止
-          set -x  # 打印所有执行的命令，帮我们找到错误行
+          # 确保出错时立即停止
+          set -e 
+          # 打印所有执行的命令，帮我们找到错误行
+          set -x 
   
           echo "开始同步 Releases..."
           echo "上游 (源) 仓库: $UPSTREAM_REPO"
@@ -64,7 +66,13 @@ jobs:
           # 2. 找出上游有，但我没有的标签
           # 使用 grep 命令来找出差集
           # -F (固定字符串), -x (整行匹配), -v (反向), -f (从文件读取模式)
-          MISSING_TAGS=$(grep -Fxvf my_tags.txt upstream_tags.txt)
+          # -----------------------------------------------------
+          # ↓↓↓ 唯一的修复在这里 ↓↓↓
+          #
+          # 加上 '|| true' 
+          # 这可以防止在 "找不到匹配项" (grep 返回 1) 时导致脚本失败
+          # -----------------------------------------------------
+          MISSING_TAGS=$(grep -Fxvf my_tags.txt upstream_tags.txt || true)
 
           if [ -z "$MISSING_TAGS" ]; then
             echo "🎉 你的仓库 ($MY_REPO) 已经与上游 ($UPSTREAM_REPO) 的 Releases 保持同步。"
